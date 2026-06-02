@@ -1,5 +1,33 @@
 # 变更日志
 
+## v1.2 (2026-06-02)
+
+### 新增
+- **V4多因子量化算法**: 集成 financial-services/equity-research/idea-generation skill 的机构选股框架
+  - 趋势因子(20) + 资金因子(20) + 质量因子(15) + 板块因子(15) + 量价因子(15) + 封板因子(15)
+  - 将Growth/Value/Quality三因子适配到A股短线场景
+- **晨报脚本** (`morning_brief.py`): 基于 morning-note + catalyst-calendar skills
+  - 每交易日9:00生成盘前简报（前日复盘+大盘状态+今日关注）
+- **8个金融技能**: 从 anthropics/financial-services 仓库安装
+  - equity-idea-generation, equity-sector-overview, equity-morning-note
+  - equity-comps-analysis, equity-competitive-analysis
+  - equity-catalyst-calendar, equity-thesis-tracker, equity-earnings-analysis
+
+### 算法矩阵
+
+| 因子 | V1 | V2 | V3 | V4 |
+|------|:--:|:--:|:--:|:--:|
+| 板块效应 | 50 | 40 | 30 | 15 |
+| 涨幅位置 | 25 | 20 | 15 | 20 |
+| 涨停基因 | 25 | 15 | 12 | 10 |
+| 量能 | - | 15 | 12 | 20 |
+| 市值 | - | 10 | 8 | 10 |
+| 封板质量 | - | - | 13 | 5 |
+| 量价配合 | - | - | - | 5 |
+| 可买性 | 10 | 10 | 10 | 15 |
+| **总分** | 110 | 110 | 100 | 100 |
+| **特点** | 进攻 | 风控 | 平衡 | 量化 |
+
 ## v1.1 (2026-06-02)
 
 ### 新增

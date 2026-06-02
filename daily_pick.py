@@ -219,7 +219,7 @@ def push_combined(date: str, all_picks: dict, zt_count: int, market_status: str,
             )
         lines.append("")
 
-    lines.append("> V1=基础版 | V2=增强版 | V3=自适应版(封板质量)")
+    lines.append("> V1=基础版 | V2=增强版 | V3=自适应版 | V4=多因子量化版")
     lines.append("> T+1回测结果将于明日收盘后推送")
 
     wx_push(f"【选股】{date} 双算法对比", "\n".join(lines))

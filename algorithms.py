@@ -388,6 +388,137 @@ def score_v3(row, sector_counts: dict, zt_codes: set) -> float:
 
 
 # ============================================================
+# V4: 多因子量化版（2026-06-02 v1.2 - 集成 idea-generation skill）
+# 将机构级选股框架适配到A股短线场景
+# 权重：趋势因子(20) + 资金因子(20) + 质量因子(15) + 板块因子(15) + 量价因子(15) + 封板因子(15)
+# ============================================================
+
+@register("v4_quant")
+def score_v4(row, sector_counts: dict, zt_codes: set) -> float:
+    """
+    V4 多因子量化评分
+    灵感来源: financial-services/equity-research/idea-generation skill
+
+    将机构选股框架（Growth/Value/Quality三因子）适配到A股短线：
+    - 趋势因子(Momentum): 涨幅甜点区 + 涨停基因 → 替代Growth
+    - 资金因子(Flow): 换手率 + 成交额变化 → 替代Value（短线看资金博弈）
+    - 质量因子(Quality): 封板质量 + 炸板率 → 短线"质量"=封板可靠性
+    - 板块因子(Sector): 主线赛道识别
+    - 量价因子(Price-Volume): 量价配合度
+    """
+    score = 0.0
+
+    # --- 数据提取 ---
+    pct = float(row.get('涨跌幅', 0)) if pd.notna(row.get('涨跌幅', 0)) else 0
+    code = str(row.get('代码', ''))
+    name = str(row.get('名称', ''))
+    sector = str(row.get('所属行业', ''))
+    stat = str(row.get('涨停统计', '0/0'))
+    turnover = float(row.get('换手率', 0)) if pd.notna(row.get('换手率', 0)) else 0
+    float_mv = float(row.get('流通市值', 0)) if pd.notna(row.get('流通市值', 0)) else 0
+    break_count = int(row.get('炸板次数', 0)) if pd.notna(row.get('炸板次数', 0)) else 0
+    amount = float(row.get('成交额', 0)) if pd.notna(row.get('成交额', 0)) else 0
+
+    try:
+        parts = stat.split('/')
+        recent_boards = int(parts[0]) if parts[0].isdigit() else 0
+    except:
+        recent_boards = 0
+
+    sector_zt_count = sector_counts.get(sector, 0)
+    is_zt = code in zt_codes
+
+    # --- 排除规则 ---
+    if '退市' in name or 'ST' in name or '*ST' in name:
+        return -999
+    if code.startswith('920'):
+        return -999
+
+    # --- 因子1: 趋势动量 (0-20分) ---
+    if 3.0 <= pct <= 7.0:
+        score += 20
+    elif 1.5 <= pct < 3.0:
+        score += 14
+    elif 7.0 < pct <= 9.0:
+        score += 10
+    elif 0 <= pct < 1.5:
+        score += 6
+    elif pct > 9.0:
+        score -= 35
+    elif pct < 0:
+        score -= 25
+
+    # --- 因子2: 资金热度 (0-20分) ---
+    # 换手率3-12%最佳（机构级换手判断）
+    if 4 <= turnover <= 10:
+        score += 20
+    elif 2 <= turnover < 4:
+        score += 15
+    elif 10 < turnover <= 15:
+        score += 10
+    elif 1 <= turnover < 2:
+        score += 6
+    elif turnover > 15:
+        score -= 8
+
+    # --- 因子3: 质量因子 (0-15分) ---
+    # 涨停基因代表短线"质量"
+    if 3 <= recent_boards <= 8:
+        score += 10
+    elif 1 <= recent_boards <= 2:
+        score += 7
+    elif 9 <= recent_boards <= 15:
+        score += 4
+
+    # 炸板率低 = 封板质量高
+    if is_zt and break_count == 0:
+        score += 5
+    elif is_zt and break_count <= 2:
+        score += 2
+    elif is_zt and break_count > 2:
+        score -= 3
+
+    # --- 因子4: 板块效应 (0-15分) ---
+    if sector_zt_count >= 5:
+        score += 15
+    elif sector_zt_count >= 3:
+        score += 12
+    elif sector_zt_count >= 2:
+        score += 8
+    elif sector_zt_count >= 1:
+        score += 4
+
+    # --- 因子5: 量价配合 (0-15分) ---
+    # 市值适中 + 换手合理 = 量价配合好
+    if float_mv > 0:
+        mv_yi = float_mv / 1e8
+        if 20 <= mv_yi <= 150:
+            score += 10
+        elif 150 < mv_yi <= 300:
+            score += 7
+        elif 10 <= mv_yi < 20:
+            score += 4
+        elif mv_yi > 500:
+            score += 2
+    else:
+        score += 5
+
+    # 量价配合：放量上涨更可靠
+    if pct > 2 and turnover > 3:
+        score += 5
+    elif pct > 0 and turnover > 1.5:
+        score += 3
+
+    # --- 因子6: 可买性 (0-15分) ---
+    if not is_zt:
+        score += 15
+    else:
+        score -= 40
+
+    return round(score, 1)
+
+
+# ============================================================
 # 通用选股引擎：用指定算法版本选股
 # ============================================================
 
