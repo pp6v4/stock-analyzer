@@ -84,21 +84,28 @@ def run():
         f"",
         f"### 今日关注",
         f"- 前日主线板块是否延续",
-        f"- 开盘30分钟量能（>昨日则强势）",
-        f"- 高位连板股是否有溢价",
+        f"- 开盘30分钟量能对比",
+        f"- 高位连板股溢价情况",
         f"",
-        f"### 策略提示",
-        f"- 今日尾盘14:30将自动选股推送",
-        f"- 如果大盘低开低走，尾盘可能触发暂停选股",
-        f"",
-        f"> 以上为AI简报，不构成投资建议",
     ]
+
+    # === 持仓分析（嵌入） ===
+    try:
+        from position_tracker import run, build_report
+        pos_results = run(mode="morning")
+        pos_content = build_report(pos_results, mode="morning")
+        # 去掉第一个标题行（避免重复），追加到简报后面
+        pos_lines = pos_content.split("\n")
+        lines.extend(pos_lines[1:])  # 跳过 "## 持仓盘前分析" 标题
+    except Exception as e:
+        lines.append(f"⚠️ 持仓数据获取失败: {e}")
+        lines.append("")
 
     content = "\n".join(lines)
     print(content)
 
     try:
-        wx_push(f"【盘前】{prev_date} 复盘", content)
+        wx_push(f"【盘前】{prev_date}", content)
         print("[PUSH] 简报已推送")
     except Exception as e:
         print(f"[PUSH ERROR] {e}")

@@ -185,6 +185,17 @@ def run(date: str, algo_versions: list = None):
     print("[4/4] 推送微信...")
     push_combined(date, all_picks, len(zt_codes), market_status, market_score)
 
+    # 尾盘持仓分析
+    try:
+        from position_tracker import run as pos_run, build_report
+        pos_results = pos_run(mode="afternoon")
+        if pos_results:
+            pos_content = build_report(pos_results, mode="afternoon")
+            wx_push(f"【持仓尾盘】{date[4:6]}-{date[6:]}", pos_content)
+            print("  [持仓] 尾盘分析已推送")
+    except Exception as e:
+        print(f"  [持仓] 分析失败: {e}")
+
     return all_picks
 
 
