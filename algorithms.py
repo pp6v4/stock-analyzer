@@ -236,6 +236,158 @@ def score_v2(row, sector_counts: dict, zt_codes: set) -> float:
 
 
 # ============================================================
+# V3: 自适应版（2026-06-02 v1.1）
+# 综合V1+V2优点 + 新增因子
+# 权重：板块(30) + 涨幅(15) + 涨停基因(12) + 量能(12) + 市值(8) + 封板质量(13) + 可买性(10)
+# ============================================================
+
+@register("v3_adaptive")
+def score_v3(row, sector_counts: dict, zt_codes: set) -> float:
+    """
+    V3 自适应评分
+    相比V2的改进：
+    1. 新增封板质量因子：炸板次数少 → 逻辑硬，资金认可度高
+    2. 新增封板时间因子：早盘封板 → 主动性买盘，尾盘封板 → 跟风
+    3. 板块效应进一步精细化：区分主线(>=4)和跟风板块
+    4. 涨幅因子引入"甜点区"概念：3-7%为最佳
+    5. 综合V1的高弹性 + V2的风控
+    """
+    score = 0.0
+
+    # --- 数据提取 ---
+    pct = float(row.get('涨跌幅', 0)) if pd.notna(row.get('涨跌幅', 0)) else 0
+    code = str(row.get('代码', ''))
+    name = str(row.get('名称', ''))
+    sector = str(row.get('所属行业', ''))
+    stat = str(row.get('涨停统计', '0/0'))
+
+    # V3数据
+    turnover = float(row.get('换手率', 0)) if pd.notna(row.get('换手率', 0)) else 0
+    float_mv = float(row.get('流通市值', 0)) if pd.notna(row.get('流通市值', 0)) else 0
+
+    # V3新增: 炸板次数和封板时间（从涨停板数据中获取，非涨停股给默认值）
+    break_count = int(row.get('炸板次数', 0)) if pd.notna(row.get('炸板次数', 0)) else 0
+    lock_time = str(row.get('首次封板时间', ''))
+
+    # 涨停基因解析
+    try:
+        parts = stat.split('/')
+        recent_boards = int(parts[0]) if parts[0].isdigit() else 0
+    except:
+        recent_boards = 0
+
+    sector_zt_count = sector_counts.get(sector, 0)
+    is_zt = code in zt_codes
+
+    # --- 排除规则 ---
+    if '退市' in name or 'ST' in name or '*ST' in name:
+        return -999
+    if code.startswith('920'):
+        return -999
+
+    # --- 因子1: 板块效应 (0-30分) ---
+    if sector_zt_count >= 6:
+        score += 30
+    elif sector_zt_count >= 4:
+        score += 26
+    elif sector_zt_count >= 3:
+        score += 20
+    elif sector_zt_count >= 2:
+        score += 13
+    elif sector_zt_count >= 1:
+        score += 6
+
+    # --- 因子2: 涨幅位置 (0-15分) ---
+    if 3.0 <= pct <= 7.0:
+        score += 15
+    elif 1.5 <= pct < 3.0:
+        score += 10
+    elif 7.0 < pct <= 9.0:
+        score += 8
+    elif 0 <= pct < 1.5:
+        score += 4
+    elif pct > 9.0:
+        score -= 35
+    elif pct < 0:
+        score -= 20
+
+    # --- 因子3: 涨停基因 (0-12分) ---
+    if 3 <= recent_boards <= 8:
+        score += 12
+    elif 1 <= recent_boards <= 2:
+        score += 8
+    elif 9 <= recent_boards <= 15:
+        score += 6
+    elif recent_boards > 15:
+        score += 2
+
+    # --- 因子4: 量能 (0-12分) ---
+    if 2 <= turnover <= 10:
+        score += 12
+    elif 1 <= turnover < 2:
+        score += 8
+    elif 10 < turnover <= 15:
+        score += 6
+    elif turnover < 1:
+        score += 2
+    elif turnover > 15:
+        score -= 8
+
+    # --- 因子5: 市值偏好 (0-8分) ---
+    if float_mv > 0:
+        mv_yi = float_mv / 1e8
+        if 15 <= mv_yi <= 150:
+            score += 8
+        elif 150 < mv_yi <= 300:
+            score += 5
+        elif 5 <= mv_yi < 15:
+            score += 3
+        elif mv_yi > 500:
+            score += 1
+        elif mv_yi < 5:
+            score -= 3
+    else:
+        score += 4
+
+    # --- 因子6: 封板质量 (0-13分) [V3新增] ---
+    # 6a. 炸板次数（非涨停股给中性分）
+    if is_zt:
+        if break_count == 0:
+            score += 8  # 封死没炸过，最强
+        elif break_count == 1:
+            score += 5
+        elif break_count <= 3:
+            score += 2
+        else:
+            score -= 5  # 炸板太多，封板质量差
+    else:
+        score += 4  # 非涨停股中性
+
+    # 6b. 封板时间（非涨停股给中性分）
+    if is_zt and lock_time:
+        try:
+            time_min = int(lock_time[:2]) * 60 + int(lock_time[2:4]) if len(lock_time) >= 4 else 600
+            if time_min <= 580:  # 9:40前封板
+                score += 5
+            elif time_min <= 600:  # 10:00前
+                score += 3
+            elif time_min <= 630:  # 10:30前
+                score += 1
+        except:
+            score += 2
+    else:
+        score += 2
+
+    # --- 因子7: 可买性 (0-10分) ---
+    if not is_zt:
+        score += 10
+    else:
+        score -= 40  # V3涨停股坚决排除（买不到）
+
+    return round(score, 1)
+
+
+# ============================================================
 # 通用选股引擎：用指定算法版本选股
 # ============================================================
 
