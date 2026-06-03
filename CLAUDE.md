@@ -52,6 +52,7 @@ stock-analyzer/
 | 每日 9:00 | morning_brief.py | 盘前简报（可选） |
 | 每日 14:30 | daily_pick.py | V1-V4各选5只→推微信 |
 | 每日 15:05 | daily_backtest.py | 前日选股vs实际→推微信 |
+| 每日 15:07 | board_tracker.py --push | 板1追踪日报→推微信 |
 | 每日 15:08 | watchlist.py --push | 观察清单（粤传媒/豫能股份）→推微信 |
 | 周五 15:30 | weekly_review.py | 算法PK+胜者+推微信 |
 
