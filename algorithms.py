@@ -61,7 +61,7 @@ def score_v1(row, sector_counts: dict, zt_codes: set) -> float:
     # --- 排除规则 ---
     if '退市' in name or 'ST' in name or '*ST' in name:
         return -999
-    if code.startswith('920'):  # 北交所
+    if code.startswith(('300', '301', '688', '920')):  # 创业板+科创板+北交所
         return -999
 
     # --- 因子1: 板块效应 (0-50分) ---
@@ -157,7 +157,7 @@ def score_v2(row, sector_counts: dict, zt_codes: set) -> float:
     # --- 排除规则 ---
     if '退市' in name or 'ST' in name or '*ST' in name:
         return -999
-    if code.startswith('920'):
+    if code.startswith(('300', '301', '688', '920')):
         return -999
 
     # --- 因子1: 板块效应 (0-40分) ---
@@ -282,7 +282,7 @@ def score_v3(row, sector_counts: dict, zt_codes: set) -> float:
     # --- 排除规则 ---
     if '退市' in name or 'ST' in name or '*ST' in name:
         return -999
-    if code.startswith('920'):
+    if code.startswith(('300', '301', '688', '920')):
         return -999
 
     # --- 因子1: 板块效应 (0-30分) ---
@@ -431,7 +431,7 @@ def score_v4(row, sector_counts: dict, zt_codes: set) -> float:
     # --- 排除规则 ---
     if '退市' in name or 'ST' in name or '*ST' in name:
         return -999
-    if code.startswith('920'):
+    if code.startswith(('300', '301', '688', '920')):
         return -999
 
     # --- 因子1: 趋势动量 (0-20分) ---

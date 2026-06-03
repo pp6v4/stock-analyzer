@@ -129,13 +129,39 @@ def get_fund_flow() -> pd.DataFrame:
 
 
 def get_stock_kline(code: str, days: int = 30) -> pd.DataFrame:
-    """个股K线"""
+    """个股K线 - 优先腾讯源（无需代理），备用东方财富"""
     end_date = datetime.now().strftime("%Y%m%d")
     start_date = (datetime.now() - timedelta(days=days * 2)).strftime("%Y%m%d")
+
+    # 腾讯源：需要 sz/sh 前缀
+    if code.startswith(('0', '3')):
+        tx_symbol = 'sz' + code
+    elif code.startswith(('6', '9')):
+        tx_symbol = 'sh' + code
+    else:
+        tx_symbol = code
+
+    # 优先腾讯源
     try:
-        df = ak.stock_zh_a_hist(symbol=code, period="daily",
+        df = _retry(lambda: ak.stock_zh_a_hist_tx(
+            symbol=tx_symbol, start_date=start_date, end_date=end_date),
+            max_retries=3, delay=2)
+        if df is not None and not df.empty:
+            # 统一列名以兼容下游
+            df = df.rename(columns={
+                'date': '日期', 'open': '开盘', 'close': '收盘',
+                'high': '最高', 'low': '最低', 'amount': '成交量',
+            })
+            return df.tail(days)
+    except Exception:
+        pass
+
+    # 备用东方财富源
+    try:
+        df = _retry(lambda: ak.stock_zh_a_hist(symbol=code, period="daily",
                                 start_date=start_date, end_date=end_date,
-                                adjust="qfq")
+                                adjust="qfq"),
+                    max_retries=3, delay=2)
         return df.tail(days) if df is not None and not df.empty else pd.DataFrame()
     except Exception as e:
         print(f"[WARN] K线({code}): {e}")

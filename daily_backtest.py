@@ -2,11 +2,17 @@
 """
 T+1回测脚本 - 次日15:00收盘后运行
 对比前一天选股 vs 当天实际走势
+
+回测数据来源:
+- 昨收: K线历史数据（腾讯源，不需要代理）
+- 今日OHLC: efinance实时快照（不需要代理）
+- 成交量: efinance快照
 """
 
 import sys
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
+import efinance as ef
 import pandas as pd
 from datetime import datetime, timedelta
 import traceback
@@ -18,58 +24,52 @@ from stock_db import get_picks_for_backtest, save_results, get_all_time_stats
 
 def backtest_stock(code: str, date: str) -> dict:
     """
-    回测单只股票
+    回测单只股票 - 混合数据源
+    K线取昨收 + efinance快照取今日OHLC
     返回: open_price, high_30min, close_price, pct_change
     """
     try:
-        df = get_stock_kline(code, days=30)
+        # 1. 从K线获取昨日收盘价
+        df = get_stock_kline(code, days=10)
         if df is None or df.empty or len(df) < 2:
             return {"error": "K线数据不足"}
 
-        # 找目标日期的数据
-        # 先确定列名
-        date_col = '日期' if '日期' in df.columns else [c for c in df.columns if '日期' in c]
-        date_col = date_col[0] if isinstance(date_col, list) and date_col else df.columns[2]
-
-        open_col = '开盘' if '开盘' in df.columns else [c for c in df.columns if '开' in c][0]
-        high_col = '最高' if '最高' in df.columns else [c for c in df.columns if '高' in c][0]
         close_col = '收盘' if '收盘' in df.columns else [c for c in df.columns if '收' in c][0]
-        vol_col = '成交量' if '成交量' in df.columns else [c for c in df.columns if '量' in c and '成' in c][0]
+        if isinstance(close_col, list):
+            close_col = close_col[0]
 
-        # 格式化日期列
+        date_col = '日期' if '日期' in df.columns else [c for c in df.columns if '日期' in c or 'date' in str(c).lower()]
+        if isinstance(date_col, list):
+            date_col = date_col[0]
+
         df[date_col] = df[date_col].astype(str).str.replace('-', '').str[:8]
-        target = date.replace('-', '')
+        pick_date_str = date.replace('-', '')  # 选股日 = 回测的前一日
 
-        # 找目标日及前一日
-        rows = df[df[date_col] == target]
-        if rows.empty:
-            # 尝试直接拿最后一行（如果是今天的数据）
-            today = datetime.now().strftime('%Y%m%d')
-            rows = df[df[date_col] == today]
-            if rows.empty:
-                rows = df.tail(1)
-                target = today
+        # 找选股日对应的行，取其收盘价作为"昨日收盘"
+        pick_rows = df[df[date_col] == pick_date_str]
+        if pick_rows.empty:
+            return {"error": f"K线找不到选股日{pick_date_str}的数据"}
+        yesterday_close = float(pick_rows[close_col].iloc[-1])
 
-        if rows.empty:
-            return {"error": f"找不到{date}的数据"}
+        # 2. 从efinance快照获取今日实际走势
+        snap = ef.stock.get_quote_snapshot(code)
+        if snap is None or snap.empty:
+            return {"error": "快照数据为空"}
 
-        row = rows.iloc[-1]
+        open_price = float(snap.get('开盘', 0))
+        high_price = float(snap.get('最高', 0))
+        low_price = float(snap.get('最低', 0))
+        close_price = float(snap.get('最新价', 0))
+        volume = float(snap.get('成交量', 0))
 
-        # 前一日收盘
-        prev_rows = df[df.index < rows.index[0]]
-        yesterday_close = float(prev_rows[close_col].iloc[-1]) if not prev_rows.empty else float(row[open_col])
+        if close_price == 0:
+            return {"error": "快照收盘价为0"}
 
-        open_price = float(row[open_col])
-        high_price = float(row[high_col])
-        close_price = float(row[close_col])
-        volume = float(row[vol_col]) if vol_col in row.index else 0
-
-        # 计算涨跌幅（相对前一日收盘）
+        # 3. 计算涨跌幅（相对选股日收盘）
         pct_change = (close_price / yesterday_close - 1) * 100
 
-        # 30分钟高点（日线数据无法精确到30分钟，用开盘价到最高价的中间值近似）
-        # 实际上日线拿不到日内30分钟数据，用当日最高作为参考
-        high_30min = max(open_price, high_price * 0.985)  # 近似
+        # 30分钟高点：用开盘价到最高价的区间估算
+        high_30min = max(open_price, high_price)
 
         return {
             "yesterday_close": round(yesterday_close, 2),
@@ -167,6 +167,13 @@ def run_backtest(pick_date: str = None):
         stats = get_all_time_stats(algo)
         if stats['total'] > 0:
             print(f"[{algo}] 累计: 总数{stats['total']} | 胜率{stats['win_rate']:.1f}% | 平均收益{stats['avg_return']:+.2f}%")
+
+    # 收盘快照（供次日盘前简报使用）
+    try:
+        from market_snapshot import save_snapshot
+        save_snapshot()
+    except Exception as e:
+        print(f"[SNAPSHOT ERROR] {e}")
 
     return results
 

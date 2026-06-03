@@ -72,6 +72,7 @@ def init_db():
     migrations = [
         ("ALTER TABLE daily_picks ADD COLUMN algo_version TEXT DEFAULT 'v1_baseline'", "algo_version"),
         ("ALTER TABLE daily_picks ADD COLUMN score REAL DEFAULT 0", "score"),
+        ("ALTER TABLE daily_picks ADD COLUMN run_time TEXT DEFAULT ''", "run_time"),
         ("ALTER TABLE daily_results ADD COLUMN algo_version TEXT DEFAULT ''", "algo_version"),
         ("ALTER TABLE weekly_reviews ADD COLUMN algo_comparison TEXT DEFAULT ''", "algo_comparison"),
         ("ALTER TABLE weekly_reviews ADD COLUMN winner_algo TEXT DEFAULT ''", "winner_algo"),
@@ -92,18 +93,21 @@ def init_db():
     conn.close()
 
 
-def save_picks(picks: list):
-    """保存每日选股（含算法版本）"""
+def save_picks(picks: list, run_time: str = None):
+    """保存每日选股（含算法版本+批次时间）"""
+    if run_time is None:
+        run_time = datetime.now().strftime('%Y%m%d_%H%M%S')
     conn = get_db()
     for p in picks:
         conn.execute("""
             INSERT INTO daily_picks (pick_date, stock_code, stock_name, rank, reason,
-                yesterday_close, pick_pct, sector, score, algo_version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                yesterday_close, pick_pct, sector, score, algo_version, run_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             p.get("date"), p.get("code"), p.get("name"), p.get("rank"),
             p.get("reason"), p.get("yesterday_close"), p.get("pct"),
             p.get("sector"), p.get("score"), p.get("algo_version", "unknown"),
+            run_time,
         ))
     conn.commit()
     conn.close()
@@ -126,11 +130,16 @@ def get_picks_by_date(date: str, algo_version: str = None):
 
 
 def get_picks_for_backtest(date: str):
-    """获取待回测的选股"""
+    """获取待回测的选股 - 只取每个算法的最新批次"""
     conn = get_db()
     rows = conn.execute("""
         SELECT p.* FROM daily_picks p
         WHERE p.pick_date = ?
+        AND p.run_time = (
+            SELECT MAX(p2.run_time) FROM daily_picks p2
+            WHERE p2.pick_date = p.pick_date
+            AND p2.algo_version = p.algo_version
+        )
         AND NOT EXISTS (
             SELECT 1 FROM daily_results r WHERE r.pick_id = p.id
         )

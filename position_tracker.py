@@ -13,9 +13,10 @@ import time
 
 # 用户持仓
 PORTFOLIO = [
-    {"code": "000725", "name": "京东方A", "shares": 1400, "cost": 5.30},
+    {"code": "000725", "name": "京东方A", "shares": 700, "cost": 5.30},
     {"code": "002582", "name": "好想你", "shares": 300, "cost": None},
-    {"code": "002181", "name": "粤传媒", "shares": 100, "cost": None},
+    {"code": "002871", "name": "伟隆股份", "shares": 200, "cost": 22.64},
+    # {"code": "002181", "name": "粤传媒", "shares": 100, "cost": None},  # 2026-06-03 开板卖出
 ]
 
 
@@ -70,12 +71,13 @@ def analyze_position(holding: dict, mode: str = "morning") -> dict:
     }
 
     if cost:
-        profit = (price / cost - 1) * 100
+        profit_pct = (price / cost - 1) * 100
         profit_amt = (price - cost) * shares
         result["cost"] = cost
-        result["profit_pct"] = round(profit, 2)
+        result["profit_pct"] = round(profit_pct, 2)
         result["profit_amt"] = round(profit_amt, 0)
     else:
+        profit_pct = None
         result["cost"] = None
 
     # === 操作建议生成 ===
@@ -118,31 +120,66 @@ def analyze_position(holding: dict, mode: str = "morning") -> dict:
             result["advice"] = "小幅波动，继续观察。"
             result["urgency"] = "low"
 
-    # 京东方A（重点仓位）
-    elif code == "000725":
-        if profit_pct and profit_pct >= 8:
-            result["action"] = "减半仓锁利润"
-            result["advice"] = f"浮盈{profit_pct:.1f}%，建议卖出700股锁定利润，剩余博中线。"
+    # 伟隆股份（短线博弈，通信设备补涨逻辑）
+    elif code == "002871":
+        if profit_pct and profit_pct <= -5:
+            result["action"] = "⚠️ 止损"
+            result["advice"] = f"亏损{profit_pct:.1f}%超过短线容忍线，建议止损离场。"
             result["urgency"] = "high"
-        elif profit_pct and profit_pct >= 3:
-            result["action"] = "持有，准备减仓"
-            result["advice"] = f"浮盈{profit_pct:.1f}%，关注5.54阻力。突破持有，受阻减半仓。"
+        elif profit_pct and profit_pct <= -2:
+            result["action"] = "持有，关注21.50"
+            result["advice"] = f"浮亏{profit_pct:.1f}%，仍在正常回调范围。跌破21.50止损，不破持有等板块轮动。"
+            result["urgency"] = "medium"
+        elif pct > 5:
+            result["action"] = "择机减仓"
+            result["advice"] = f"今日涨{pct:.1f}%，短线冲高可以减100股锁定部分利润。"
             result["urgency"] = "medium"
         elif pct > 0:
             result["action"] = "持有"
-            result["advice"] = "趋势向上，继续持有。"
+            result["advice"] = "今日收红，趋势良好。关注板块龙头走势，龙头不倒就拿着。"
             result["urgency"] = "low"
-        elif price < 5.11:
+        elif price < 21.50:
             result["action"] = "⚠️ 止损"
-            result["advice"] = "跌破5.11前低，建议减仓或清仓。"
+            result["advice"] = "跌破昨日低点21.50，短线逻辑破坏，建议止损。"
             result["urgency"] = "high"
-        elif pct < -3:
-            result["action"] = "警惕，观察5.11"
-            result["advice"] = "回调中，若跌破5.11执行止损。"
-            result["urgency"] = "medium"
         else:
             result["action"] = "持有"
-            result["advice"] = "小幅波动，趋势未破。"
+            result["advice"] = "微跌横盘属正常洗盘，板块强势+涨停基因在，耐心等轮动。"
+            result["urgency"] = "low"
+
+    # 京东方A（已减半仓，剩余700股博趋势）
+    elif code == "000725":
+        if profit_pct and profit_pct >= 15:
+            result["action"] = "再减200股锁利"
+            result["advice"] = f"浮盈{profit_pct:.1f}%，已远超目标。建议再减200股，剩余500股零成本持有。"
+            result["urgency"] = "medium"
+        elif profit_pct and profit_pct >= 8:
+            result["action"] = "持有，让利润跑"
+            result["advice"] = f"浮盈{profit_pct:.1f}%，半仓已锁利，剩余看6.00。回踩5.54不破就拿着。"
+            result["urgency"] = "low"
+        elif profit_pct and profit_pct >= 3:
+            result["action"] = "持有"
+            result["advice"] = f"浮盈{profit_pct:.1f}%，趋势良好，半仓已锁利，剩余安心持有。"
+            result["urgency"] = "low"
+        elif pct > 0:
+            result["action"] = "持有"
+            result["advice"] = "趋势向上，半仓利润已锁定，继续持有。"
+            result["urgency"] = "low"
+        elif price < 5.11:
+            result["action"] = "⚠️ 清仓"
+            result["advice"] = "跌破5.11前低，建议清仓保住剩余利润。已锁的半仓利润还在。"
+            result["urgency"] = "high"
+        elif price < 5.30:
+            result["action"] = "⚠️ 注意成本线"
+            result["advice"] = "已跌破成本5.30，关注5.11支撑。半仓利润已锁，不必恐慌。"
+            result["urgency"] = "medium"
+        elif pct < -3:
+            result["action"] = "观望"
+            result["advice"] = "回调中，半仓已锁利不必急于操作。观察5.30支撑。"
+            result["urgency"] = "low"
+        else:
+            result["action"] = "持有"
+            result["advice"] = "小幅波动，半仓利润已锁定，耐心持有。"
             result["urgency"] = "low"
 
     # 根据盘前/尾盘调整

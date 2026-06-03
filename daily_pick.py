@@ -177,10 +177,11 @@ def run(date: str, algo_versions: list = None):
 
     # === 4. 保存 + 推送 ===
     print("[3/4] 保存...")
+    run_time = datetime.now().strftime('%Y%m%d_%H%M%S')
     for algo_ver, picks in all_picks.items():
         if picks:
-            save_picks(picks)
-            print(f"  [{algo_ver}] DB保存 {len(picks)} 条")
+            save_picks(picks, run_time)
+            print(f"  [{algo_ver}] DB保存 {len(picks)} 条 (批次:{run_time})")
 
     print("[4/4] 推送微信...")
     push_combined(date, all_picks, len(zt_codes), market_status, market_score)
