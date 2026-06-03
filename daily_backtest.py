@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 import traceback
 
 from data_fetcher import get_stock_kline
-from push_wechat import push as wx_push, push_backtest, push_backtest_comparison
+from push_wechat import push as wx_push, push_backtest_comparison
 from stock_db import get_picks_for_backtest, save_results, get_all_time_stats
 
 
@@ -58,7 +58,6 @@ def backtest_stock(code: str, date: str) -> dict:
 
         open_price = float(snap.get('开盘', 0))
         high_price = float(snap.get('最高', 0))
-        low_price = float(snap.get('最低', 0))
         close_price = float(snap.get('最新价', 0))
         volume = float(snap.get('成交量', 0))
 

@@ -139,22 +139,23 @@ def get_stock_kline(code: str, days: int = 30) -> pd.DataFrame:
     elif code.startswith(('6', '9')):
         tx_symbol = 'sh' + code
     else:
-        tx_symbol = code
+        print(f"[WARN] K线({code}): 未知代码前缀，跳过腾讯源")
+        tx_symbol = None
 
     # 优先腾讯源
-    try:
-        df = _retry(lambda: ak.stock_zh_a_hist_tx(
-            symbol=tx_symbol, start_date=start_date, end_date=end_date),
-            max_retries=3, delay=2)
-        if df is not None and not df.empty:
-            # 统一列名以兼容下游
-            df = df.rename(columns={
-                'date': '日期', 'open': '开盘', 'close': '收盘',
-                'high': '最高', 'low': '最低', 'amount': '成交量',
-            })
-            return df.tail(days)
-    except Exception:
-        pass
+    if tx_symbol:
+        try:
+            df = _retry(lambda: ak.stock_zh_a_hist_tx(
+                symbol=tx_symbol, start_date=start_date, end_date=end_date),
+                max_retries=3, delay=2)
+            if df is not None and not df.empty:
+                df = df.rename(columns={
+                    'date': '日期', 'open': '开盘', 'close': '收盘',
+                    'high': '最高', 'low': '最低', 'amount': '成交量',
+                })
+                return df.tail(days)
+        except Exception:
+            pass
 
     # 备用东方财富源
     try:
